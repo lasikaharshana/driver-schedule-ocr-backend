@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file, jsonify
+from flask_cors import CORS
 import pandas as pd
 import os, tempfile, re, datetime
 from google.cloud import documentai_v1 as documentai
@@ -12,7 +13,7 @@ LOCATION = os.environ.get('LOCATION', 'us')
 PROCESSOR_ID = os.environ.get('PROCESSOR_ID', '2acb7269aa33ccf9')
 
 # Path to Google Service Account key file (set as ENV on cloud)
-GOOGLE_KEY_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "driver-schedule-ocr.json")
+GOOGLE_KEY_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "/etc/secrets/driver-schedule-ocr.json")
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_KEY_PATH
 
 # Path to Excel template (set as ENV or place in app root)
@@ -20,6 +21,7 @@ TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", "Truck_Load_Record_Template.xlsx
 # ============================
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route("/")
 def home():
@@ -160,6 +162,7 @@ def parse_schedule_excel():
 
     filled_path = fill_template_per_truck(df_clean)
     return send_file(filled_path, as_attachment=True, download_name="truck_load_records.xlsx")
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))  # Use Render's $PORT, or 5000 locally
