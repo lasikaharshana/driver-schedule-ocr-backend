@@ -100,11 +100,13 @@ def extract_table_from_image(image_path):
     return df_clean
 
 def fill_template_per_truck(df_clean):
+    from copy import copy
+    from openpyxl import load_workbook
+    import tempfile
+    import datetime
+
     template_wb = load_workbook(TEMPLATE_PATH)
-    sheet_names = template_wb.sheetnames
-    if not sheet_names:
-        raise Exception("No worksheets found in the template Excel file!")
-    template_sheet = template_wb[sheet_names[0]]
+    template_sheet = template_wb.active  # Use first (and only) sheet
 
     out_wb = openpyxl.Workbook()
     out_wb.remove(out_wb.active)
@@ -115,32 +117,29 @@ def fill_template_per_truck(df_clean):
         sheet_name = (truck_row.get("Truck") or truck_row.get("Run#") or "Sheet")[:31]
         ws = out_wb.create_sheet(title=sheet_name)
 
-        # 2. Copy cell values + formatting
+        # 2. Copy cell values + minimal formatting only (font, alignment)
         for row in template_sheet.iter_rows():
             for cell in row:
-                try:
-                    new_cell = ws[cell.coordinate]
-                    new_cell.value = cell.value
-                    if cell.has_style:
-                        new_cell.font = copy(cell.font)
-                        new_cell.border = copy(cell.border)
-                        new_cell.fill = copy(cell.fill)
-                        new_cell.number_format = copy(cell.number_format)
-                        new_cell.protection = copy(cell.protection)
-                        new_cell.alignment = copy(cell.alignment)
-                except Exception as e:
-                    print(f"Error copying cell {cell.coordinate}: {e}")
-                    continue
-        # 3. Copy merged cells
+                new_cell = ws[cell.coordinate]
+                new_cell.value = cell.value
+                if cell.has_style:
+                    # Only copy font and alignment (avoid fill/border/protection to prevent OOM)
+                    new_cell.font = copy(cell.font)
+                    new_cell.alignment = copy(cell.alignment)
+
+        # 3. Copy merged cells (these are not style objects, so it's ok)
         for merged_cell in template_sheet.merged_cells.ranges:
             ws.merge_cells(str(merged_cell))
+
         # 4. Copy column widths
         for col_letter, dim in template_sheet.column_dimensions.items():
             ws.column_dimensions[col_letter].width = dim.width
+
         # 5. Copy row heights
         for row_idx, dim in template_sheet.row_dimensions.items():
             ws.row_dimensions[row_idx].height = dim.height
-        # 6. Fill the required fields
+
+        # 6. Fill YOUR fields
         ws["B3"] = truck_row.get("Run#", "")
         ws["I3"] = truck_row.get("Truck", "")
         driver1 = truck_row.get("Driver1", "")
@@ -148,10 +147,12 @@ def fill_template_per_truck(df_clean):
         ws["B4"] = " / ".join([d for d in [driver1, driver2] if d])
         ws["I4"] = today.strftime("%d/%m/%Y")
 
+    # Save result
     out = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     out_wb.save(out.name)
     out.close()
     return out.name
+
 
 @app.route('/parse_schedule_excel', methods=['POST'])
 def parse_schedule_excel():
