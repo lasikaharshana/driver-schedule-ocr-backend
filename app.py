@@ -94,26 +94,31 @@ def extract_table_from_image(image_path):
     return df_clean
 
 def fill_template_per_truck(df_clean):
-    # Load the template workbook (must only have ONE sheet)
-    template_wb = load_workbook(TEMPLATE_PATH)
-    template_sheet = template_wb.active
+    from openpyxl import load_workbook
+    import tempfile
+    import datetime
 
-    # Prepare output workbook
-    out_wb = load_workbook(TEMPLATE_PATH)  # Start from a real template copy
-    out_wb.remove(out_wb.active)           # Remove template sheet after copying
+    # Load the template ONCE for output
+    out_wb = load_workbook(TEMPLATE_PATH)
+    template_sheet = out_wb.active  # This is the one you'll copy!
+
+    # Rename the template to "Template" so it's not mistaken for data
+    template_sheet.title = "Template"
 
     today = datetime.date.today() + datetime.timedelta(days=1)
+    output_sheets = []
 
     for idx, truck_row in enumerate(df_clean.to_dict(orient="records")):
-        # Create new sheet by copying template sheet
+        # Copy the template sheet in the SAME workbook
         ws = out_wb.copy_worksheet(template_sheet)
-        # Give a unique, valid name for Excel sheets
+        # Unique sheet name
         sheet_name = (truck_row.get("Truck") or truck_row.get("Run#") or "Sheet")[:31]
         if sheet_name in out_wb.sheetnames:
             sheet_name = f"{sheet_name}_{idx+1}"
         ws.title = sheet_name
+        output_sheets.append(ws)
 
-        # Fill fields
+        # Fill in your fields as before
         ws["B3"] = truck_row.get("Run#", "")
         ws["I3"] = truck_row.get("Truck", "")
         driver1 = truck_row.get("Driver1", "")
@@ -121,7 +126,10 @@ def fill_template_per_truck(df_clean):
         ws["B4"] = " / ".join([d for d in [driver1, driver2] if d])
         ws["I4"] = today.strftime("%d/%m/%Y")
 
-    # Save output workbook
+    # Delete the original template sheet
+    del out_wb["Template"]
+
+    # Save
     out = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     out_wb.save(out.name)
     out.close()
