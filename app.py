@@ -65,19 +65,36 @@ def extract_table_from_image(image_path):
         return None
     df = pd.DataFrame(tables, columns=headers)
 
-    # Find columns by partial match
-    def find_col(df, substring):
-        for col in df.columns:
-            if substring.lower() in col.lower():
-                return col
+    # Robust column matching
+    def find_col(df, substrings):
+        for target in substrings:
+            for col in df.columns:
+                clean_col = col.lower().replace(" ", "").replace("_", "")
+                if target in clean_col:
+                    return col
         return None
 
-    run_col = find_col(df, 'Run')
-    driver1_col = find_col(df, 'Driver 1')
-    driver2_col = find_col(df, 'Driver 2')
-    truck_col = find_col(df, 'Truck')
+    # Try multiple variants for each required field
+    run_col     = find_col(df, ["run", "run#", "runno", "runno.", "runnumber"])
+    driver1_col = find_col(df, ["driver1", "driver 1", "driver", "drivers", "drivername"])
+    driver2_col = find_col(df, ["driver2", "driver 2", "codriver", "co-driver"])
+    truck_col   = find_col(df, ["truck", "vehicle", "reg", "rego", "regno", "registration"])
 
-    # Cleaners
+    # For logging and debugging, print or log extracted columns
+    print("Extracted columns:", list(df.columns))
+
+    # If required columns are missing, return a clear error
+    missing_cols = []
+    if not run_col:     missing_cols.append("Run Number")
+    if not driver1_col: missing_cols.append("Driver 1")
+    if not truck_col:   missing_cols.append("Truck/Rego")
+    if missing_cols:
+        raise Exception(
+            f"Missing required columns: {', '.join(missing_cols)}. "
+            f"Extracted columns: {list(df.columns)}"
+        )
+
+    # Cleaners (same as before)
     def extract_run_numbers(cell):
         nums = re.findall(r'\b\d{4}\b', str(cell))
         return " / ".join(nums)
@@ -89,13 +106,16 @@ def extract_table_from_image(image_path):
 
     def clean_truck(cell):
         cell = str(cell).strip()
-        return cell[:6]
+        return cell[:8]  # Slightly longer for full regos
 
     df_clean = pd.DataFrame()
-    df_clean["Run#"] = df[run_col].apply(extract_run_numbers)
+    df_clean["Run#"]    = df[run_col].apply(extract_run_numbers)
     df_clean["Driver1"] = df[driver1_col].apply(clean_driver)
-    df_clean["Driver2"] = df[driver2_col].apply(clean_driver) if driver2_col else ""
-    df_clean["Truck"] = df[truck_col].apply(clean_truck)
+    if driver2_col:
+        df_clean["Driver2"] = df[driver2_col].apply(clean_driver)
+    else:
+        df_clean["Driver2"] = ""
+    df_clean["Truck"]   = df[truck_col].apply(clean_truck)
 
     return df_clean
 
@@ -159,14 +179,17 @@ def parse_schedule_excel():
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
     file = request.files['file']
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp:
-        file.save(temp.name)
-        df_clean = extract_table_from_image(temp.name)
-    if df_clean is None or df_clean.empty:
-        return jsonify({"error": "No table detected"}), 400
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp:
+            file.save(temp.name)
+            df_clean = extract_table_from_image(temp.name)
+        if df_clean is None or df_clean.empty:
+            return jsonify({"error": "No table detected"}), 400
 
-    filled_path = fill_template_per_truck(df_clean)
-    return send_file(filled_path, as_attachment=True, download_name="truck_load_records.xlsx")
+        filled_path = fill_template_per_truck(df_clean)
+        return send_file(filled_path, as_attachment=True, download_name="truck_load_records.xlsx")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
