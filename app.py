@@ -120,12 +120,13 @@ def extract_table_from_image(image_path):
     return df_clean
 
 def fill_template_per_truck(df_clean):
+    from copy import copy
     from openpyxl import load_workbook
     import tempfile
     import datetime
 
     template_wb = load_workbook(TEMPLATE_PATH)
-    template_sheet = template_wb.active
+    template_sheet = template_wb.active  # Use first (and only) sheet
 
     out_wb = openpyxl.Workbook()
     out_wb.remove(out_wb.active)
@@ -135,24 +136,32 @@ def fill_template_per_truck(df_clean):
         sheet_name = (truck_row.get("Truck") or truck_row.get("Run#") or "Sheet")[:31]
         ws = out_wb.create_sheet(title=sheet_name)
 
-        # Copy cell values only, no formatting!
+        # 1. Copy ALL cell values and safe formatting
         for row in template_sheet.iter_rows():
             for cell in row:
-                ws[cell.coordinate].value = cell.value
+                new_cell = ws[cell.coordinate]
+                new_cell.value = cell.value
+                # Safer: Only copy font and alignment to avoid memory issues
+                if cell.has_style:
+                    try:
+                        new_cell.font = copy(cell.font)
+                        new_cell.alignment = copy(cell.alignment)
+                    except Exception:
+                        pass
 
-        # Copy merged cells
+        # 2. Copy merged cells
         for merged_cell in template_sheet.merged_cells.ranges:
             ws.merge_cells(str(merged_cell))
 
-        # Copy column widths (optional, safe)
+        # 3. Copy column widths
         for col_letter, dim in template_sheet.column_dimensions.items():
             ws.column_dimensions[col_letter].width = dim.width
 
-        # Copy row heights (optional, safe)
+        # 4. Copy row heights
         for row_idx, dim in template_sheet.row_dimensions.items():
             ws.row_dimensions[row_idx].height = dim.height
 
-        # Fill YOUR fields
+        # 5. Fill your target cells
         ws["B3"] = truck_row.get("Run#", "")
         ws["I3"] = truck_row.get("Truck", "")
         driver1 = truck_row.get("Driver1", "")
@@ -160,6 +169,7 @@ def fill_template_per_truck(df_clean):
         ws["B4"] = " / ".join([d for d in [driver1, driver2] if d])
         ws["I4"] = today.strftime("%d/%m/%Y")
 
+    # Save result
     out = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     out_wb.save(out.name)
     out.close()
