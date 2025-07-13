@@ -162,5 +162,5 @@ def parse_schedule_excel():
     return send_file(filled_path, as_attachment=True, download_name="truck_load_records.xlsx")
 
 if __name__ == "__main__":
-    # Debug OFF for production. Use Gunicorn or Waitress on cloud!
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))  # Use Render's $PORT, or 5000 locally
+    app.run(host="0.0.0.0", port=port)
