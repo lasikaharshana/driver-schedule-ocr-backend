@@ -118,15 +118,19 @@ def fill_template_per_truck(df_clean):
         # 2. Copy cell values + formatting
         for row in template_sheet.iter_rows():
             for cell in row:
-                new_cell = ws[cell.coordinate]
-                new_cell.value = cell.value
-                if cell.has_style:
-                    new_cell.font = copy(cell.font)
-                    new_cell.border = copy(cell.border)
-                    new_cell.fill = copy(cell.fill)
-                    new_cell.number_format = copy(cell.number_format)
-                    new_cell.protection = copy(cell.protection)
-                    new_cell.alignment = copy(cell.alignment)
+                try:
+                    new_cell = ws[cell.coordinate]
+                    new_cell.value = cell.value
+                    if cell.has_style:
+                        new_cell.font = copy(cell.font)
+                        new_cell.border = copy(cell.border)
+                        new_cell.fill = copy(cell.fill)
+                        new_cell.number_format = copy(cell.number_format)
+                        new_cell.protection = copy(cell.protection)
+                        new_cell.alignment = copy(cell.alignment)
+                except Exception as e:
+                    print(f"Error copying cell {cell.coordinate}: {e}")
+                    continue
         # 3. Copy merged cells
         for merged_cell in template_sheet.merged_cells.ranges:
             ws.merge_cells(str(merged_cell))
